@@ -1,114 +1,138 @@
-import {
-	Editor,
-	MarkdownView,
-	MarkdownFileInfo,
-	Modal,
-	Notice,
-	Plugin,
-} from 'obsidian';
-import {
-	DEFAULT_SETTINGS,
-	MyPluginSettings,
-	SampleSettingTab,
-} from './settings';
+import { Notice, Plugin, TFile, TFolder, normalizePath } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
+// For using the internal templater plugin by obsidian
+declare module 'obsidian' {
+	interface TemplatesPluginInstance {
+		insertTemplate(file: TFile): Promise<void>;
+	}
 
-export default class MyPlugin extends Plugin {
-	settings!: MyPluginSettings;
+	interface InternalPlugin {
+		enabled: boolean;
+		instance?: TemplatesPluginInstance;
+	}
 
+	interface App {
+		internalPlugins: {
+			getPluginById(id: string): InternalPlugin | null;
+		};
+	}
+}
+
+const DAILY_FOLDER = 'Daily';
+const WEEKLY_FOLDER = 'Weekly';
+const WEEKLY_TEMPLATE = 'Templates/Weekly Note Template.md';
+
+export default class DotsPlugin extends Plugin {
 	async onload() {
-		await this.loadSettings();
-
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (_evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
-
-		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			},
+			id: 'open-weekly-note',
+			name: 'Open weekly note',
+			callback: () => this.openWeeklyNote(),
 		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (
-				editor: Editor,
-				_ctx: MarkdownView | MarkdownFileInfo,
-			) => {
-				editor.replaceSelection('Sample editor command');
-			},
+		this.app.workspace.onLayoutReady(async () => {
+			try {
+				await this.createTodayNote();
+			} catch (error) {
+				new Notice(
+					`Failed to create today's note: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
 		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView =
-					this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-				return false;
-			},
-		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(activeDocument, 'click', (_evt: MouseEvent) => {
-			new Notice('Click');
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(
-			window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000),
-		);
 	}
 
 	onunload() {}
 
-	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			(await this.loadData()) as Partial<MyPluginSettings>,
-		);
+	async openWeeklyNote() {
+		await this.ensureFolder(WEEKLY_FOLDER);
+		const path = normalizePath(`${WEEKLY_FOLDER}/${weeklyStamp()}.md`);
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			await this.app.workspace.getLeaf().openFile(existing);
+			return;
+		}
+
+		const note = await this.app.vault.create(path, '');
+		await this.app.workspace.getLeaf().openFile(note);
+		await this.insertTemplate(WEEKLY_TEMPLATE);
 	}
 
-	async saveSettings() {
-		await this.saveData(this.settings);
+	async insertTemplate(templatePath: string) {
+		const template = this.app.vault.getAbstractFileByPath(
+			normalizePath(templatePath),
+		);
+		if (!(template instanceof TFile)) {
+			new Notice(`Template not found: ${templatePath}`);
+			return;
+		}
+
+		const templates = this.app.internalPlugins.getPluginById('templates');
+		if (!templates?.enabled || !templates.instance) {
+			new Notice('Core templates plugin is not enabled.');
+			return;
+		}
+
+		await templates.instance.insertTemplate(template);
+	}
+
+	async createTodayNote() {
+		await this.ensureFolder(DAILY_FOLDER);
+		await this.ensureNote(`${DAILY_FOLDER}/${todayStamp()}.md`);
+	}
+
+	async ensureNote(notePath: string): Promise<TFile> {
+		const path = normalizePath(notePath);
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFile) {
+			return existing;
+		}
+
+		return await this.app.vault.create(path, '');
+	}
+
+	async ensureFolder(folder: string) {
+		const path = normalizePath(folder);
+		const existing = this.app.vault.getAbstractFileByPath(path);
+		if (existing instanceof TFolder) {
+			return;
+		}
+
+		await this.app.vault.createFolder(path);
 	}
 }
 
-class SampleModal extends Modal {
-	onOpen() {
-		const { contentEl } = this;
-		contentEl.setText('Woah!');
-	}
+function todayStamp(): string {
+	const now = new Date();
+	const year = now.getFullYear();
+	const month = String(now.getMonth() + 1).padStart(2, '0');
+	const day = String(now.getDate()).padStart(2, '0');
+	return `${year}-${month}-${day}`;
+}
 
-	onClose() {
-		const { contentEl } = this;
-		contentEl.empty();
-	}
+function weeklyStamp(): string {
+	const { year, week } = isoYearWeek(new Date());
+	return `${year}-W${String(week).padStart(2, '0')}`;
+}
+
+function isoYearWeek(date: Date): { year: number; week: number } {
+	const thursday = new Date(
+		date.getFullYear(),
+		date.getMonth(),
+		date.getDate(),
+	);
+	const mondayOffset = (thursday.getDay() + 6) % 7;
+	thursday.setDate(thursday.getDate() - mondayOffset + 3);
+
+	const year = thursday.getFullYear();
+	const firstThursday = new Date(year, 0, 4);
+	firstThursday.setDate(
+		firstThursday.getDate() - ((firstThursday.getDay() + 6) % 7) + 3,
+	);
+
+	const week =
+		1 +
+		Math.round(
+			(thursday.getTime() - firstThursday.getTime()) /
+				(7 * 24 * 60 * 60 * 1000),
+		);
+	return { year, week };
 }
