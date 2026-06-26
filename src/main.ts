@@ -1,4 +1,6 @@
 import { Notice, Plugin, TFile, TFolder, normalizePath } from 'obsidian';
+import { LogEntry, LogInput, WeeklyLog } from './log';
+import { LogModal } from './log-modal';
 
 // For using the internal templater plugin by obsidian
 declare module 'obsidian' {
@@ -29,6 +31,19 @@ export default class DotsPlugin extends Plugin {
 			name: 'Open weekly note',
 			callback: () => this.openWeeklyNote(),
 		});
+		this.addCommand({
+			id: 'log',
+			name: 'Log',
+			callback: () => {
+				new LogModal(this.app, (input) => {
+					this.log(input).catch((error) => {
+						new Notice(
+							`Failed to log: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					});
+				}).open();
+			},
+		});
 		this.app.workspace.onLayoutReady(async () => {
 			try {
 				await this.createTodayNote();
@@ -43,17 +58,34 @@ export default class DotsPlugin extends Plugin {
 	onunload() {}
 
 	async openWeeklyNote() {
+		await this.ensureWeeklyNote();
+	}
+
+	async log(input: LogInput) {
+		const entry = LogEntry.fromInput(input, new Date());
+		const file = await this.ensureWeeklyNote();
+		const dateHeader = `# ${todayStamp()}`;
+		await this.app.vault.process(file, (data) => {
+			const note = new WeeklyLog(data);
+			note.insert(dateHeader, entry);
+			return note.toString();
+		});
+		new Notice('Logged to weekly note.');
+	}
+
+	async ensureWeeklyNote(): Promise<TFile> {
 		await this.ensureFolder(WEEKLY_FOLDER);
 		const path = normalizePath(`${WEEKLY_FOLDER}/${weeklyStamp()}.md`);
 		const existing = this.app.vault.getAbstractFileByPath(path);
 		if (existing instanceof TFile) {
 			await this.app.workspace.getLeaf().openFile(existing);
-			return;
+			return existing;
 		}
 
 		const note = await this.app.vault.create(path, '');
 		await this.app.workspace.getLeaf().openFile(note);
 		await this.insertTemplate(WEEKLY_TEMPLATE);
+		return note;
 	}
 
 	async insertTemplate(templatePath: string) {
