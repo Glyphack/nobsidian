@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Weekly/2026-25.md",
+                "file": "Publish/Second Note.md",
                 "mode": "source",
-                "source": false
+                "source": true
               },
               "icon": "lucide-file",
-              "title": "2026-25"
+              "title": "Second Note"
             }
           }
         ],
@@ -186,6 +186,7 @@
   },
   "left-ribbon": {
     "hiddenItems": {
+      "dots:Publish notes": false,
       "switcher:Open quick switcher": false,
       "graph:Open graph view": false,
       "canvas:Create new canvas": false,
@@ -197,8 +198,14 @@
   },
   "active": "40f795e5d25a0c92",
   "lastOpenFiles": [
-    "Templates/Weekly Note Template.md",
+    "Templates/Share Template.md",
+    "Templates/Blog Template.md",
+    "Publish/Hello World.md",
+    "Publish/Draft Note.md",
+    "attachments/square.png",
     "Weekly/2026-25.md",
+    "Daily/2026-06-29.md",
+    "Templates/Weekly Note Template.md",
     "Templates",
     "Home.md",
     "Weekly",

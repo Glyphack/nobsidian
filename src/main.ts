@@ -1,6 +1,8 @@
-import { Notice, Plugin, TFile, TFolder, normalizePath } from 'obsidian';
+import { Notice, Platform, Plugin, TFile, TFolder, normalizePath } from 'obsidian';
 import { LogEntry, LogInput, WeeklyLog } from './log';
 import { LogModal } from './log-modal';
+import { DEFAULT_SETTINGS, DotsSettings, DotsSettingTab } from './settings';
+import { HugoSync } from './hugo-sync';
 
 // For using the internal templater plugin by obsidian
 declare module 'obsidian' {
@@ -25,7 +27,18 @@ const WEEKLY_FOLDER = 'Weekly';
 const WEEKLY_TEMPLATE = 'Templates/Weekly Note Template.md';
 
 export default class DotsPlugin extends Plugin {
+	settings!: DotsSettings;
+	private hugoSync!: HugoSync;
+
 	async onload() {
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			(await this.loadData()) as Partial<DotsSettings>,
+		);
+		this.hugoSync = new HugoSync(this.app, () => this.settings);
+		this.addSettingTab(new DotsSettingTab(this.app, this));
+
 		this.addCommand({
 			id: 'open-weekly-note',
 			name: 'Open weekly note',
@@ -44,6 +57,12 @@ export default class DotsPlugin extends Plugin {
 				}).open();
 			},
 		});
+		this.addCommand({
+			id: 'publish-notes',
+			name: 'Publish notes',
+			callback: () => this.syncToHugo(),
+		});
+		this.addRibbonIcon('upload-cloud', 'Publish notes', () => this.syncToHugo());
 		this.app.workspace.onLayoutReady(async () => {
 			try {
 				await this.createTodayNote();
@@ -56,6 +75,22 @@ export default class DotsPlugin extends Plugin {
 	}
 
 	onunload() {}
+
+	async saveSettings() {
+		await this.saveData(this.settings);
+	}
+
+	syncToHugo() {
+		if (!Platform.isDesktopApp) {
+			new Notice('Publishing notes is only available on desktop.');
+			return;
+		}
+		this.hugoSync.run().catch((error) => {
+			new Notice(
+				`Failed to publish notes: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
+	}
 
 	async openWeeklyNote() {
 		await this.ensureWeeklyNote();

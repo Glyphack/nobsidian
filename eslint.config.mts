@@ -31,4 +31,33 @@ export default tseslint.config(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		rules: {
+			'obsidianmd/ui/sentence-case': [
+				'error',
+				{
+					brands: ['Hugo', 'Dots'],
+				},
+			],
+		},
+	},
+	{
+		files: ['src/hugo-sync.ts'],
+		languageOptions: {
+			globals: {
+				require: 'readonly',
+			},
+		},
+		rules: {
+			'import/no-nodejs-modules': 'off',
+			'@typescript-eslint/no-require-imports': 'off',
+		},
+	},
+	{
+		files: ['**/*.test.ts'],
+		rules: {
+			'import/no-nodejs-modules': 'off',
+			'@typescript-eslint/no-floating-promises': 'off',
+		},
+	},
 );
